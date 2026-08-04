@@ -1,5 +1,5 @@
 // Şok Nokta - çevrimdışı önbellek (service worker)
-var CACHE = 'sok-nokta-v17';
+var CACHE = 'sok-nokta-v18';
 var ASSETS = ['./', './index.html'];
 
 self.addEventListener('install', function(e) {
@@ -22,6 +22,10 @@ self.addEventListener('activate', function(e) {
 // Önce internet dene, güncel sürümü önbelleğe al; internet yoksa önbellekten ver
 self.addEventListener('fetch', function(e) {
     if (e.request.method !== 'GET') return;
+    // Sadece kendi origin'imizdeki dosyaları yönet; Firebase / gstatic / googleapis gibi
+    // DIŞ isteklere DOKUNMA (yoksa canlı bulut senkron bağlantısı bozulur).
+    var _u = new URL(e.request.url);
+    if (_u.origin !== self.location.origin) return;
     e.respondWith(
         fetch(e.request).then(function(resp) {
             var copy = resp.clone();
