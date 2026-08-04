@@ -320,7 +320,7 @@ body {
         <div id="bulutDurum" style="font-size:12px;color:#94a3b8;text-align:center;margin-bottom:8px;line-height:1.4">—</div>
         <button class="btn-yedek" onclick="baglantiTesti()" style="width:100%">🔧 Bağlantı Testi</button>
         <button class="btn-yedek" onclick="authCikis()" style="width:100%;margin-top:8px">🚪 Çıkış Yap</button>
-        <div class="surum-not">Sürüm 22 · Bulut senkron</div>
+        <div class="surum-not">Sürüm 23 · Bulut senkron</div>
     </div>
 
     <div class="card">
@@ -1385,6 +1385,7 @@ var _fbConfig = {
 };
 var _user = null, _localLoaded = false, _applyingRemote = false, _fbReady = false;
 var _pushTimer = null, _lastSyncJson = null, _fbRef = null, _pendingPush = false;
+var _cloudFis = {}, _lastFisMap = {}, _rebuildTimer = null;
 
 function _authErr(msg) { var e = document.getElementById('authErr'); if (e) e.textContent = msg || ''; }
 function _bulutDurum(msg, renk) { var d = document.getElementById('bulutDurum'); if (d) { d.textContent = msg; d.style.color = renk || '#94a3b8'; } }
@@ -1413,56 +1414,81 @@ function _kurlariUygula(k) {
 }
 function _durumJson() { return JSON.stringify({ urunler: urunler, fisler: fisler, kurlar: kurlarRaw() }); }
 
-// Yerel değişikliği buluta yaz (geciktirmeli)
+// Yerel değişikliği buluta yaz (geciktirmeli) — her fiş AYRI kayıt (küçük yazımlar)
 function bulutYaz() {
     if (!_user || !_fbReady || _applyingRemote) return;
-    _pendingPush = true;   // yerel değişiklik gönderilene kadar gelen bulutu yok say (saat farkından BAĞIMSIZ yarış önleme)
+    _pendingPush = true;   // gönderim bitene kadar gelen bulutu yok say (saat farkından BAĞIMSIZ yarış önleme)
     clearTimeout(_pushTimer);
-    _pushTimer = setTimeout(function() {
-        if (!_user || !_fbRef) { _pendingPush = false; return; }
-        var payload;
-        try {
-            // undefined değerleri temizle — RTDB .set() undefined görürse senkron ÇÖKER (sessiz hata)
-            payload = JSON.parse(JSON.stringify({ urunler: urunler, fisler: fisler, kurlar: kurlarRaw() }));
-        } catch (e) { _pendingPush = false; _bulutDurum('⚠️ Veri okunamadı', '#f87171'); return; }
-        payload.updatedAt = Date.now();
-        _lastSyncJson = JSON.stringify({ urunler: payload.urunler, fisler: payload.fisler, kurlar: payload.kurlar });
-        _bulutDurum('☁️ Kaydediliyor…', '#93c5fd');
-        try {
-            _fbRef.set(payload)
-                .then(function() { _pendingPush = false; _bulutDurum('✅ Senkron: ' + (_user.email || ''), '#6ee7b7'); })
-                .catch(function() { _pendingPush = false; _bulutDurum('⚠️ İnternet yok — gelince senkronlanacak', '#fbbf24'); });
-        } catch (e) { _pendingPush = false; _bulutDurum('⚠️ Kaydetme hatası', '#f87171'); }
-    }, 600);
+    _pushTimer = setTimeout(_bulutGonder, 600);
+}
+function _bulutGonder() {
+    if (!_user || !_fbRef) { _pendingPush = false; return; }
+    var base = firebase.database().ref('users/' + _user.uid);
+    var writes = [];
+    // 1) FİŞLER — her biri ayrı kayıt. Sadece DEĞİŞENleri yaz (koca arşiv de küçük parçalar halinde gider).
+    var curMap = {};
+    (fisler || []).forEach(function (f) { if (f && f.id != null) curMap[f.id] = f; });
+    Object.keys(curMap).forEach(function (id) {
+        var clean, s;
+        try { clean = JSON.parse(JSON.stringify(curMap[id])); s = JSON.stringify(clean); } catch (e) { return; }
+        if (_lastFisMap[id] !== s) { writes.push(base.child('fisler/' + id).set(clean)); _lastFisMap[id] = s; }
+    });
+    // silinen fişler → bulutdan da sil
+    Object.keys(_lastFisMap).forEach(function (id) {
+        if (!curMap[id]) { writes.push(base.child('fisler/' + id).remove()); delete _lastFisMap[id]; }
+    });
+    // 2) meta (sepet + kurlar — küçük)
+    var meta;
+    try { meta = JSON.parse(JSON.stringify({ urunler: urunler, kurlar: kurlarRaw() })); } catch (e) { meta = { urunler: [], kurlar: {} }; }
+    meta.updatedAt = Date.now();
+    writes.push(base.child('meta').set(meta));
+    if (!writes.length) { _pendingPush = false; _bulutDurum('✅ Senkron: ' + (_user.email || ''), '#6ee7b7'); return; }
+    _bulutDurum('☁️ Kaydediliyor… (' + writes.length + ' parça)', '#93c5fd');
+    Promise.all(writes).then(function () {
+        _pendingPush = false; _bulutDurum('✅ Senkron: ' + (_user.email || ''), '#6ee7b7');
+    }).catch(function (e) {
+        _pendingPush = false; _bulutDurum('⚠️ Bağlantı sorunu: ' + (e && (e.code || e.message) || ''), '#fbbf24');
+    });
 }
 
-// Bulut dinleyicisini bağla
+// Bulut dinleyicisini bağla — fişler PARÇA PARÇA (child) gelir; büyük tek-okuma/yazma yok
 function baglanCloud() {
     if (!_user || !_fbReady) return;
-    _fbRef = firebase.database().ref('users/' + _user.uid + '/state');
-    _fbRef.on('value', function(snap) {
-        var v = snap.val();
-        if (v == null) {
-            // Bulut boş → mevcut yerel veriyi buluta yükle (ilk kurulum)
-            if ((fisler && fisler.length) || (urunler && urunler.length)) { _bulutDurum('☁️ İlk yükleme…', '#93c5fd'); bulutYaz(); }
-            else { _bulutDurum('✅ Senkron: ' + (_user.email || ''), '#6ee7b7'); }
-            return;
-        }
-        // Kendi yerel değişikliğimiz gönderiliyorsa gelen (eski) bulut halini yok say → yarış/ezme önlenir (saatten bağımsız)
+    var base = firebase.database().ref('users/' + _user.uid);
+    _fbRef = base; _cloudFis = {}; _lastFisMap = {};
+    var fref = base.child('fisler');
+    // İlk durum: bulut boş + yerelde veri varsa → yerel KORUNUR, buluta yüklenir (WIPE YOK)
+    fref.once('value').then(function (snap) {
+        if (!snap.exists() && fisler && fisler.length) { _bulutDurum('☁️ İlk yükleme…', '#93c5fd'); bulutYaz(); }
+    }).catch(function () {});
+    // Fişleri yeniden kur (child olayları biriktikçe, kısa gecikmeyle tek sefer)
+    var rebuild = function () {
+        clearTimeout(_rebuildTimer);
+        _rebuildTimer = setTimeout(function () {
+            if (_pendingPush) return;   // kendi yazımız sürerken dokunma
+            _applyingRemote = true;
+            fisler = Object.keys(_cloudFis).map(function (k) { return _cloudFis[k]; }).sort(function (a, b) { return (a.id || 0) - (b.id || 0); });
+            _lastFisMap = {};
+            Object.keys(_cloudFis).forEach(function (id) { try { _lastFisMap[id] = JSON.stringify(_cloudFis[id]); } catch (e) {} });
+            dbSet('fisler', fisler);
+            _applyingRemote = false;
+            _ekranYenile();
+            _bulutDurum('✅ Senkron: ' + (_user.email || ''), '#6ee7b7');
+        }, 250);
+    };
+    fref.on('child_added', function (s) { _cloudFis[s.key] = s.val(); rebuild(); });
+    fref.on('child_changed', function (s) { _cloudFis[s.key] = s.val(); rebuild(); });
+    fref.on('child_removed', function (s) { delete _cloudFis[s.key]; rebuild(); });
+    // meta (sepet + kurlar)
+    base.child('meta').on('value', function (s) {
         if (_pendingPush) return;
-        var incoming = JSON.stringify({ urunler: v.urunler || [], fisler: v.fisler || [], kurlar: v.kurlar || {} });
-        if (incoming === _lastSyncJson) { _bulutDurum('✅ Senkron: ' + (_user.email || ''), '#6ee7b7'); return; }  // kendi yazımızın yankısı
-        // Bulut ana kaynak → uygula. Silme / Geri Yükle / düzenleme HEPSİ doğru yansır (union yok, resurrection yok).
+        var m = s.val(); if (!m) return;
         _applyingRemote = true;
-        urunler = Array.isArray(v.urunler) ? v.urunler : [];
-        fisler = Array.isArray(v.fisler) ? v.fisler : [];
-        _kurlariUygula(v.kurlar);
-        dbSet('urunler', urunler); dbSet('fisler', fisler);
-        _lastSyncJson = incoming;
+        if (Array.isArray(m.urunler)) { urunler = m.urunler; dbSet('urunler', urunler); }
+        _kurlariUygula(m.kurlar);
         _applyingRemote = false;
         onGirisDegis(); _ekranYenile();
-        _bulutDurum('🔄 Güncellendi · ' + (_user.email || ''), '#6ee7b7');
-    }, function() { _bulutDurum('⚠️ Bulut okunamadı', '#fbbf24'); });
+    }, function () {});
 }
 function _cloudBaslatBekle() { if (_user && _localLoaded && _fbReady) baglanCloud(); }
 
@@ -1471,7 +1497,7 @@ function baglantiTesti() {
     var u = (typeof firebase !== 'undefined' && firebase.auth) ? firebase.auth().currentUser : null;
     u = u || _user;
     var L = [];
-    L.push('Sürüm 22');
+    L.push('Sürüm 23');
     L.push('Giriş: ' + (u ? u.email : '❌ YOK'));
     L.push('uid: ' + (u ? u.uid.slice(0, 10) : '-'));
     L.push('firebase yüklü: ' + (typeof firebase !== 'undefined' ? 'evet' : '❌ HAYIR'));
@@ -1561,8 +1587,8 @@ kurKaydet = function() { _origKK.apply(this, arguments); bulutYaz(); };
                 _bulutDurum('☁️ Bağlanıyor…', '#93c5fd');
                 _cloudBaslatBekle();
             } else {
-                if (_fbRef) { _fbRef.off(); _fbRef = null; }
-                _lastSyncJson = null; _pendingPush = false;
+                if (_fbRef) { try { _fbRef.child('fisler').off(); _fbRef.child('meta').off(); _fbRef.off(); } catch(e){} _fbRef = null; }
+                _lastSyncJson = null; _pendingPush = false; _cloudFis = {}; _lastFisMap = {};
                 _authGoster(true);
                 _bulutDurum('Giriş yapılmadı', '#94a3b8');
             }
