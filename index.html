@@ -319,7 +319,7 @@ body {
         <div class="card-title" style="margin-top:16px">☁️ Bulut Senkron</div>
         <div id="bulutDurum" style="font-size:12px;color:#94a3b8;text-align:center;margin-bottom:8px;line-height:1.4">—</div>
         <button class="btn-yedek" onclick="authCikis()" style="width:100%">🚪 Çıkış Yap</button>
-        <div class="surum-not">Sürüm 19 · Bulut senkron</div>
+        <div class="surum-not">Sürüm 20 · Bulut senkron</div>
     </div>
 
     <div class="card">
@@ -1383,7 +1383,7 @@ var _fbConfig = {
     appId: "1:215325450592:web:3bbdc8fbad2afd7f20fe05"
 };
 var _user = null, _localLoaded = false, _applyingRemote = false, _fbReady = false;
-var _pushTimer = null, _lastSyncJson = null, _fbRef = null, _firstSync = true;
+var _pushTimer = null, _lastSyncJson = null, _fbRef = null, _localTs = 0;
 
 function _authErr(msg) { var e = document.getElementById('authErr'); if (e) e.textContent = msg || ''; }
 function _bulutDurum(msg, renk) { var d = document.getElementById('bulutDurum'); if (d) { d.textContent = msg; d.style.color = renk || '#94a3b8'; } }
@@ -1415,6 +1415,7 @@ function _durumJson() { return JSON.stringify({ urunler: urunler, fisler: fisler
 // Yerel değişikliği buluta yaz (geciktirmeli)
 function bulutYaz() {
     if (!_user || !_fbReady || _applyingRemote) return;
+    _localTs = Date.now();   // bu cihazdaki değişikliğin zamanı (en yeni yazan kazanır)
     clearTimeout(_pushTimer);
     _pushTimer = setTimeout(function() {
         if (!_user || !_fbRef) return;
@@ -1423,59 +1424,42 @@ function bulutYaz() {
             // undefined değerleri temizle — RTDB .set() undefined görürse senkron ÇÖKER (sessiz hata)
             payload = JSON.parse(JSON.stringify({ urunler: urunler, fisler: fisler, kurlar: kurlarRaw() }));
         } catch (e) { _bulutDurum('⚠️ Veri okunamadı', '#f87171'); return; }
-        payload.updatedAt = Date.now();
-        _lastSyncJson = _durumJson();
+        payload.updatedAt = _localTs;
+        _lastSyncJson = JSON.stringify({ urunler: payload.urunler, fisler: payload.fisler, kurlar: payload.kurlar });
         _bulutDurum('☁️ Kaydediliyor…', '#93c5fd');
         try {
             _fbRef.set(payload)
                 .then(function() { _bulutDurum('✅ Senkron: ' + (_user.email || ''), '#6ee7b7'); })
                 .catch(function() { _bulutDurum('⚠️ İnternet yok — gelince senkronlanacak', '#fbbf24'); });
-        } catch (e) { _bulutDurum('⚠️ Kaydetme hatası (veri düzeltiliyor)', '#f87171'); }
+        } catch (e) { _bulutDurum('⚠️ Kaydetme hatası', '#f87171'); }
     }, 600);
 }
 
 // Bulut dinleyicisini bağla
 function baglanCloud() {
     if (!_user || !_fbReady) return;
-    _firstSync = true;
     _fbRef = firebase.database().ref('users/' + _user.uid + '/state');
     _fbRef.on('value', function(snap) {
         var v = snap.val();
         if (v == null) {
             // Bulut boş → mevcut yerel veriyi buluta yükle (ilk kurulum)
-            _firstSync = false;
-            _bulutDurum('☁️ İlk yükleme…', '#93c5fd');
-            bulutYaz();
+            if ((fisler && fisler.length) || (urunler && urunler.length)) { _bulutDurum('☁️ İlk yükleme…', '#93c5fd'); bulutYaz(); }
+            else { _bulutDurum('✅ Senkron: ' + (_user.email || ''), '#6ee7b7'); }
             return;
         }
-        var cloudFisler = Array.isArray(v.fisler) ? v.fisler : [];
-        if (_firstSync) {
-            // İLK bağlanışta: yerel + bulut fişlerini id bazında BİRLEŞTİR (veri kaybı olmasın)
-            _firstSync = false;
-            _applyingRemote = true;
-            var map = {}, degisti = false;
-            cloudFisler.forEach(function(f) { if (f && f.id != null) map[f.id] = f; });
-            fisler.forEach(function(f) { if (f && f.id != null && !map[f.id]) { map[f.id] = f; degisti = true; } });
-            var merged = Object.keys(map).map(function(k) { return map[k]; }).sort(function(a, b) { return (a.id || 0) - (b.id || 0); });
-            fisler = merged;
-            if (Array.isArray(v.urunler)) urunler = v.urunler;
-            _kurlariUygula(v.kurlar);
-            dbSet('urunler', urunler); dbSet('fisler', fisler);
-            _applyingRemote = false;
-            onGirisDegis(); _ekranYenile();
-            if (degisti) { bulutYaz(); }  // yerelde fazlası varsa buluta da yaz
-            else { _lastSyncJson = _durumJson(); }
-            _bulutDurum('✅ Senkron: ' + (_user.email || ''), '#6ee7b7');
-            return;
-        }
-        var incoming = JSON.stringify({ urunler: v.urunler || [], fisler: cloudFisler, kurlar: v.kurlar || {} });
+        var cloudTs = v.updatedAt || 0;
+        // Bizim yerel değişikliğimiz daha yeniyse eski bulut halini yok say (bizim yazımız kazanacak) → yarış/ezme önlenir
+        if (cloudTs < _localTs) return;
+        var incoming = JSON.stringify({ urunler: v.urunler || [], fisler: v.fisler || [], kurlar: v.kurlar || {} });
         if (incoming === _lastSyncJson) { _bulutDurum('✅ Senkron: ' + (_user.email || ''), '#6ee7b7'); return; }  // kendi yazımızın yankısı
+        // Bulut ana kaynak → uygula. Silme / Geri Yükle / düzenleme HEPSİ doğru yansır (union yok, resurrection yok).
         _applyingRemote = true;
         urunler = Array.isArray(v.urunler) ? v.urunler : [];
-        fisler = cloudFisler;
+        fisler = Array.isArray(v.fisler) ? v.fisler : [];
         _kurlariUygula(v.kurlar);
         dbSet('urunler', urunler); dbSet('fisler', fisler);
         _lastSyncJson = incoming;
+        _localTs = cloudTs;
         _applyingRemote = false;
         onGirisDegis(); _ekranYenile();
         _bulutDurum('🔄 Güncellendi · ' + (_user.email || ''), '#6ee7b7');
@@ -1543,7 +1527,7 @@ kurKaydet = function() { _origKK.apply(this, arguments); bulutYaz(); };
                 _cloudBaslatBekle();
             } else {
                 if (_fbRef) { _fbRef.off(); _fbRef = null; }
-                _lastSyncJson = null; _firstSync = true;
+                _lastSyncJson = null; _localTs = 0;
                 _authGoster(true);
                 _bulutDurum('Giriş yapılmadı', '#94a3b8');
             }
