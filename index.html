@@ -246,9 +246,40 @@ body {
 .fis-kart img { width: 100%; max-height: 200px; object-fit: contain; background: #0b1120; border-radius: 12px; cursor: pointer; }
 .fis-kart-degistir { margin-top: 6px; background: rgba(99,102,241,0.18); border: none; color: #a5b4fc; font-size: 12px; font-weight: 600; padding: 6px 12px; border-radius: 8px; cursor: pointer; }
 .fis-kart-ekle { width: 100%; background: rgba(99,102,241,0.12); border: 1.5px dashed #4f46e5; color: #a5b4fc; border-radius: 12px; padding: 12px; font-size: 13px; font-weight: 600; cursor: pointer; margin-bottom: 14px; }
+
+/* Giriş ekranı (bulut senkron) */
+.auth-overlay { position: fixed; inset: 0; background: radial-gradient(1200px 600px at 50% -10%, #1e293b 0%, #0b1120 55%), #0b1120; display: none; align-items: center; justify-content: center; z-index: 200; padding: 24px; }
+.auth-box { width: 100%; max-width: 360px; text-align: center; }
+.auth-logo { width: 60px; height: 60px; border-radius: 17px; background: linear-gradient(135deg,#3b82f6,#8b5cf6); display: inline-flex; align-items: center; justify-content: center; font-size: 30px; box-shadow: 0 8px 24px rgba(59,130,246,0.35); margin-bottom: 14px; }
+.auth-title { font-size: 22px; font-weight: 800; color: #f1f5f9; margin-bottom: 6px; }
+.auth-sub { font-size: 13px; color: #94a3b8; margin-bottom: 22px; line-height: 1.5; }
+.auth-input { width: 100%; background: #0b1120; border: 1.5px solid #334155; border-radius: 12px; color: #f1f5f9; font-size: 16px; padding: 14px; margin-bottom: 12px; outline: none; -webkit-appearance: none; }
+.auth-input:focus { border-color: #6366f1; }
+.auth-err { color: #f87171; font-size: 13px; min-height: 18px; margin-bottom: 8px; font-weight: 600; }
+.auth-btn { width: 100%; border: none; border-radius: 12px; padding: 15px; font-size: 15px; font-weight: 700; cursor: pointer; margin-bottom: 10px; }
+.auth-btn.giris { background: linear-gradient(135deg,#3b82f6,#6366f1); color: #fff; box-shadow: 0 6px 16px rgba(59,130,246,0.35); }
+.auth-btn.kayit { background: rgba(148,163,184,0.14); color: #cbd5e1; }
+.auth-note { font-size: 12px; color: #64748b; line-height: 1.5; margin-top: 6px; }
 </style>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
 </head>
 <body>
+
+<div class="auth-overlay" id="authOverlay">
+    <div class="auth-box">
+        <div class="auth-logo">⚡</div>
+        <div class="auth-title">Şok Nokta</div>
+        <div class="auth-sub">Giriş yap — siparişlerin tüm cihazlarında senkron olsun.</div>
+        <input id="authEmail" class="auth-input" type="email" inputmode="email" autocomplete="username" placeholder="E-posta">
+        <input id="authPass" class="auth-input" type="password" autocomplete="current-password" placeholder="Şifre (en az 6 karakter)">
+        <div id="authErr" class="auth-err"></div>
+        <button id="authGiris" class="auth-btn giris" onclick="authGiris()">Giriş Yap</button>
+        <button id="authKayit" class="auth-btn kayit" onclick="authKayit()">Yeni Hesap Oluştur</button>
+        <div class="auth-note">İlk kez mi? E-posta + şifre yazıp <b>Yeni Hesap Oluştur</b>'a bas. Sonra aynı bilgilerle diğer cihazlarda <b>Giriş Yap</b>.</div>
+    </div>
+</div>
 
 <div class="header">
     <div class="logo">⚡</div>
@@ -285,7 +316,10 @@ body {
         </div>
         <button class="btn-yedek" onclick="document.getElementById('birlestirInput').click()" style="width:100%;margin-top:8px">🔀 Yedekle Birleştir</button>
         <div style="color:#64748b;font-size:11px;margin-top:7px;line-height:1.5;text-align:center">⬆️ Geri Yükle = mevcut veriyi <b>değiştirir</b><br>🔀 Birleştir = başka telefonun siparişlerini <b>silmeden ekler</b></div>
-        <div class="surum-not">Sürüm 16 · IndexedDB depolama</div>
+        <div class="card-title" style="margin-top:16px">☁️ Bulut Senkron</div>
+        <div id="bulutDurum" style="font-size:12px;color:#94a3b8;text-align:center;margin-bottom:8px;line-height:1.4">—</div>
+        <button class="btn-yedek" onclick="authCikis()" style="width:100%">🚪 Çıkış Yap</button>
+        <div class="surum-not">Sürüm 17 · Bulut senkron</div>
     </div>
 
     <div class="card">
@@ -1252,6 +1286,8 @@ function tabRozetGuncelle() {
 verileriYukle().then(function() {
     renderFis();
     tabRozetGuncelle();
+    _localLoaded = true;
+    if (typeof _cloudBaslatBekle === 'function') _cloudBaslatBekle();
 });
 
 document.getElementById('gramInput').addEventListener('input', onGirisDegis);
@@ -1331,6 +1367,180 @@ document.getElementById('onAdet').addEventListener('keydown', function(e) {
 if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('sw.js').catch(function(){});
 }
+
+/* ==================== FIREBASE BULUT SENKRON ==================== */
+var _fbConfig = {
+    apiKey: "AIzaSyDMQqZuCBYVd6bPFxMzTZbqHr8WW1fwk6s",
+    authDomain: "cinsiparis-15e95.firebaseapp.com",
+    databaseURL: "https://cinsiparis-15e95-default-rtdb.firebaseio.com",
+    projectId: "cinsiparis-15e95",
+    storageBucket: "cinsiparis-15e95.firebasestorage.app",
+    messagingSenderId: "215325450592",
+    appId: "1:215325450592:web:3bbdc8fbad2afd7f20fe05"
+};
+var _user = null, _localLoaded = false, _applyingRemote = false, _fbReady = false;
+var _pushTimer = null, _lastSyncJson = null, _fbRef = null, _firstSync = true;
+
+function _authErr(msg) { var e = document.getElementById('authErr'); if (e) e.textContent = msg || ''; }
+function _bulutDurum(msg, renk) { var d = document.getElementById('bulutDurum'); if (d) { d.textContent = msg; d.style.color = renk || '#94a3b8'; } }
+function _authGoster(g) { var o = document.getElementById('authOverlay'); if (o) o.style.display = g ? 'flex' : 'none'; }
+
+// Aktif ekranı yeniden çiz (buluttan veri gelince)
+function _ekranYenile() {
+    tabRozetGuncelle();
+    var vf = document.getElementById('view-fis');
+    var vs = document.getElementById('view-siparisler');
+    var vg = document.getElementById('view-gelenler');
+    if (vf && vf.style.display !== 'none') renderFis();
+    if (vg && vg.style.display !== 'none') gelenlerRender();
+    if (vs && vs.style.display !== 'none') {
+        if (document.getElementById('fisDetay').style.display !== 'none' && _acikFisId != null && fisBul(_acikFisId)) fisAc(_acikFisId);
+        else fislerRender();
+    }
+}
+// Kurları alanlara + localStorage'a yaz (buluttan gelince)
+function _kurlariUygula(k) {
+    if (!k) return;
+    for (var i = 0; i < _kurFields.length; i++) {
+        if (k[_kurFields[i]] !== undefined) { var el = document.getElementById(_kurFields[i]); if (el) el.value = k[_kurFields[i]]; }
+    }
+    try { localStorage.setItem('smh_kurlar', JSON.stringify(kurlarRaw())); } catch(e) {}
+}
+function _durumJson() { return JSON.stringify({ urunler: urunler, fisler: fisler, kurlar: kurlarRaw() }); }
+
+// Yerel değişikliği buluta yaz (geciktirmeli)
+function bulutYaz() {
+    if (!_user || !_fbReady || _applyingRemote) return;
+    clearTimeout(_pushTimer);
+    _pushTimer = setTimeout(function() {
+        if (!_user || !_fbRef) return;
+        _lastSyncJson = _durumJson();
+        _bulutDurum('☁️ Kaydediliyor…', '#93c5fd');
+        _fbRef.set({ urunler: urunler, fisler: fisler, kurlar: kurlarRaw(), updatedAt: Date.now() })
+            .then(function() { _bulutDurum('✅ Senkron: ' + (_user.email || ''), '#6ee7b7'); })
+            .catch(function() { _bulutDurum('⚠️ İnternet yok — gelince senkronlanacak', '#fbbf24'); });
+    }, 600);
+}
+
+// Bulut dinleyicisini bağla
+function baglanCloud() {
+    if (!_user || !_fbReady) return;
+    _firstSync = true;
+    _fbRef = firebase.database().ref('users/' + _user.uid + '/state');
+    _fbRef.on('value', function(snap) {
+        var v = snap.val();
+        if (v == null) {
+            // Bulut boş → mevcut yerel veriyi buluta yükle (ilk kurulum)
+            _firstSync = false;
+            _bulutDurum('☁️ İlk yükleme…', '#93c5fd');
+            bulutYaz();
+            return;
+        }
+        var cloudFisler = Array.isArray(v.fisler) ? v.fisler : [];
+        if (_firstSync) {
+            // İLK bağlanışta: yerel + bulut fişlerini id bazında BİRLEŞTİR (veri kaybı olmasın)
+            _firstSync = false;
+            _applyingRemote = true;
+            var map = {}, degisti = false;
+            cloudFisler.forEach(function(f) { if (f && f.id != null) map[f.id] = f; });
+            fisler.forEach(function(f) { if (f && f.id != null && !map[f.id]) { map[f.id] = f; degisti = true; } });
+            var merged = Object.keys(map).map(function(k) { return map[k]; }).sort(function(a, b) { return (a.id || 0) - (b.id || 0); });
+            fisler = merged;
+            if (Array.isArray(v.urunler)) urunler = v.urunler;
+            _kurlariUygula(v.kurlar);
+            dbSet('urunler', urunler); dbSet('fisler', fisler);
+            _applyingRemote = false;
+            onGirisDegis(); _ekranYenile();
+            if (degisti) { bulutYaz(); }  // yerelde fazlası varsa buluta da yaz
+            else { _lastSyncJson = _durumJson(); }
+            _bulutDurum('✅ Senkron: ' + (_user.email || ''), '#6ee7b7');
+            return;
+        }
+        var incoming = JSON.stringify({ urunler: v.urunler || [], fisler: cloudFisler, kurlar: v.kurlar || {} });
+        if (incoming === _lastSyncJson) { _bulutDurum('✅ Senkron: ' + (_user.email || ''), '#6ee7b7'); return; }  // kendi yazımızın yankısı
+        _applyingRemote = true;
+        urunler = Array.isArray(v.urunler) ? v.urunler : [];
+        fisler = cloudFisler;
+        _kurlariUygula(v.kurlar);
+        dbSet('urunler', urunler); dbSet('fisler', fisler);
+        _lastSyncJson = incoming;
+        _applyingRemote = false;
+        onGirisDegis(); _ekranYenile();
+        _bulutDurum('🔄 Güncellendi · ' + (_user.email || ''), '#6ee7b7');
+    }, function() { _bulutDurum('⚠️ Bulut okunamadı', '#fbbf24'); });
+}
+function _cloudBaslatBekle() { if (_user && _localLoaded && _fbReady) baglanCloud(); }
+
+// Giriş / kayıt / çıkış
+function authGiris() {
+    var em = (document.getElementById('authEmail').value || '').trim();
+    var pw = document.getElementById('authPass').value || '';
+    if (!em || !pw) { _authErr('E-posta ve şifre gir.'); return; }
+    _authErr('Giriş yapılıyor…');
+    firebase.auth().signInWithEmailAndPassword(em, pw).catch(function(e) { _authErr(_authHata(e)); });
+}
+function authKayit() {
+    var em = (document.getElementById('authEmail').value || '').trim();
+    var pw = document.getElementById('authPass').value || '';
+    if (!em || !pw) { _authErr('E-posta ve şifre gir.'); return; }
+    if (pw.length < 6) { _authErr('Şifre en az 6 karakter olmalı.'); return; }
+    _authErr('Hesap oluşturuluyor…');
+    firebase.auth().createUserWithEmailAndPassword(em, pw).catch(function(e) { _authErr(_authHata(e)); });
+}
+function authCikis() {
+    if (!confirm('Çıkış yapılsın mı? (Veriler bulutta kalır; tekrar giriş yapınca geri gelir.)')) return;
+    if (firebase && firebase.auth) firebase.auth().signOut();
+}
+function _authHata(e) {
+    var c = (e && e.code) || '';
+    if (c.indexOf('invalid-credential') >= 0 || c.indexOf('wrong-password') >= 0) return 'E-posta veya şifre hatalı.';
+    if (c.indexOf('user-not-found') >= 0) return 'Böyle bir hesap yok. "Yeni Hesap Oluştur"a bas.';
+    if (c.indexOf('email-already-in-use') >= 0) return 'Bu e-posta zaten kayıtlı. "Giriş Yap"a bas.';
+    if (c.indexOf('invalid-email') >= 0) return 'Geçersiz e-posta adresi.';
+    if (c.indexOf('weak-password') >= 0) return 'Şifre en az 6 karakter olmalı.';
+    if (c.indexOf('network') >= 0) return 'İnternet bağlantısı yok.';
+    if (c.indexOf('too-many-requests') >= 0) return 'Çok deneme yapıldı, biraz bekle.';
+    return 'Hata: ' + (c || 'bilinmiyor');
+}
+
+// Yerel kaydetmeleri buluta da yansıt (mevcut fonksiyonları sarmala)
+var _origUK = urunlerKaydet, _origFK = fislerKaydet, _origKK = kurKaydet;
+urunlerKaydet = function() { _origUK.apply(this, arguments); bulutYaz(); };
+fislerKaydet = function() { _origFK.apply(this, arguments); bulutYaz(); };
+kurKaydet = function() { _origKK.apply(this, arguments); bulutYaz(); };
+
+// Firebase başlat
+(function() {
+    if (typeof firebase === 'undefined' || !firebase.initializeApp) {
+        _authGoster(false);  // SDK yüklenemedi → yerel modda çalış
+        _bulutDurum('⚠️ Bulut yüklenemedi (yerel mod)', '#fbbf24');
+        return;
+    }
+    try {
+        firebase.initializeApp(_fbConfig);
+        try { firebase.auth().setPersistence(firebase.auth.Auth.Persistence.LOCAL); } catch(e) {}
+        _fbReady = true;
+        _authGoster(true);
+        firebase.auth().onAuthStateChanged(function(user) {
+            _user = user || null;
+            if (user) {
+                _authGoster(false);
+                _authErr('');
+                var pEl = document.getElementById('authPass'); if (pEl) pEl.value = '';
+                _bulutDurum('☁️ Bağlanıyor…', '#93c5fd');
+                _cloudBaslatBekle();
+            } else {
+                if (_fbRef) { _fbRef.off(); _fbRef = null; }
+                _lastSyncJson = null; _firstSync = true;
+                _authGoster(true);
+                _bulutDurum('Giriş yapılmadı', '#94a3b8');
+            }
+        });
+    } catch (e) {
+        _authGoster(false);
+        _bulutDurum('⚠️ Bulut başlatılamadı (yerel mod)', '#fbbf24');
+    }
+})();
 </script>
 </body>
 </html>
