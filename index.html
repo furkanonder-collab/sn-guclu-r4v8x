@@ -319,7 +319,7 @@ body {
         <div class="card-title" style="margin-top:16px">☁️ Bulut Senkron</div>
         <div id="bulutDurum" style="font-size:12px;color:#94a3b8;text-align:center;margin-bottom:8px;line-height:1.4">—</div>
         <button class="btn-yedek" onclick="authCikis()" style="width:100%">🚪 Çıkış Yap</button>
-        <div class="surum-not">Sürüm 17 · Bulut senkron</div>
+        <div class="surum-not">Sürüm 18 · Bulut senkron</div>
     </div>
 
     <div class="card">
@@ -1363,9 +1363,13 @@ document.getElementById('onAdet').addEventListener('keydown', function(e) {
     }, { passive: true });
 })();
 
-// Çevrimdışı çalışma (service worker)
+// Çevrimdışı çalışma (service worker) — yeni sürüm gelince kendini günceller
 if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('sw.js').catch(function(){});
+    navigator.serviceWorker.register('sw.js').then(function(reg) { try { reg.update(); } catch(e) {} }).catch(function(){});
+    var _swReloaded = false;
+    navigator.serviceWorker.addEventListener('controllerchange', function() {
+        if (_swReloaded) return; _swReloaded = true; location.reload();
+    });
 }
 
 /* ==================== FIREBASE BULUT SENKRON ==================== */
