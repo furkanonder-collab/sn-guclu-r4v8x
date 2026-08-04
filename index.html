@@ -318,8 +318,9 @@ body {
         <div style="color:#64748b;font-size:11px;margin-top:7px;line-height:1.5;text-align:center">⬆️ Geri Yükle = mevcut veriyi <b>değiştirir</b><br>🔀 Birleştir = başka telefonun siparişlerini <b>silmeden ekler</b></div>
         <div class="card-title" style="margin-top:16px">☁️ Bulut Senkron</div>
         <div id="bulutDurum" style="font-size:12px;color:#94a3b8;text-align:center;margin-bottom:8px;line-height:1.4">—</div>
-        <button class="btn-yedek" onclick="authCikis()" style="width:100%">🚪 Çıkış Yap</button>
-        <div class="surum-not">Sürüm 21 · Bulut senkron</div>
+        <button class="btn-yedek" onclick="baglantiTesti()" style="width:100%">🔧 Bağlantı Testi</button>
+        <button class="btn-yedek" onclick="authCikis()" style="width:100%;margin-top:8px">🚪 Çıkış Yap</button>
+        <div class="surum-not">Sürüm 22 · Bulut senkron</div>
     </div>
 
     <div class="card">
@@ -1464,6 +1465,42 @@ function baglanCloud() {
     }, function() { _bulutDurum('⚠️ Bulut okunamadı', '#fbbf24'); });
 }
 function _cloudBaslatBekle() { if (_user && _localLoaded && _fbReady) baglanCloud(); }
+
+// Bağlantı/senkron röntgeni — sorunu ekranda gösterir
+function baglantiTesti() {
+    var u = (typeof firebase !== 'undefined' && firebase.auth) ? firebase.auth().currentUser : null;
+    u = u || _user;
+    var L = [];
+    L.push('Sürüm 22');
+    L.push('Giriş: ' + (u ? u.email : '❌ YOK'));
+    L.push('uid: ' + (u ? u.uid.slice(0, 10) : '-'));
+    L.push('firebase yüklü: ' + (typeof firebase !== 'undefined' ? 'evet' : '❌ HAYIR'));
+    L.push('fbReady: ' + _fbReady + '  localLoaded: ' + _localLoaded);
+    L.push('Dinleyici (fbRef): ' + (_fbRef ? 'BAĞLI ✅' : '❌ BAĞLI DEĞİL'));
+    L.push('Yerel: ' + fisler.length + ' sipariş, ' + urunler.length + ' fiş ürünü');
+    if (!u) { alert(L.join('\n') + '\n\n➡️ Önce giriş yap.'); return; }
+    _bulutDurum('🔧 Test ediliyor…', '#93c5fd');
+    var db = firebase.database();
+    db.ref('.info/connected').once('value').then(function (s) {
+        L.push('Canlı bağlantı: ' + (s.val() ? 'AÇIK ✅' : '❌ KAPALI (ağ/engel olabilir)'));
+        var tref = db.ref('users/' + u.uid + '/_diag');
+        return tref.set({ t: Date.now() }).then(function () {
+            L.push('YAZMA testi: BAŞARILI ✅');
+            return tref.once('value').then(function (s2) {
+                L.push('OKUMA testi: ' + (s2.exists() ? 'BAŞARILI ✅' : '❌ boş'));
+                return tref.remove();
+            });
+        });
+    }).then(function () {
+        L.push('\n👉 Sonuç: yazma+okuma çalışıyor.');
+        alert(L.join('\n'));
+        _bulutDurum('✅ Senkron: ' + (u.email || ''), '#6ee7b7');
+    }).catch(function (e) {
+        L.push('\n❌ HATA: ' + (e && (e.code || e.message)));
+        alert(L.join('\n'));
+        _bulutDurum('⚠️ Test hatası', '#f87171');
+    });
+}
 
 // Giriş / kayıt / çıkış
 function authGiris() {
