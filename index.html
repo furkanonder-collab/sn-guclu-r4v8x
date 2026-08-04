@@ -319,7 +319,7 @@ body {
         <div class="card-title" style="margin-top:16px">☁️ Bulut Senkron</div>
         <div id="bulutDurum" style="font-size:12px;color:#94a3b8;text-align:center;margin-bottom:8px;line-height:1.4">—</div>
         <button class="btn-yedek" onclick="authCikis()" style="width:100%">🚪 Çıkış Yap</button>
-        <div class="surum-not">Sürüm 18 · Bulut senkron</div>
+        <div class="surum-not">Sürüm 19 · Bulut senkron</div>
     </div>
 
     <div class="card">
@@ -1418,11 +1418,19 @@ function bulutYaz() {
     clearTimeout(_pushTimer);
     _pushTimer = setTimeout(function() {
         if (!_user || !_fbRef) return;
+        var payload;
+        try {
+            // undefined değerleri temizle — RTDB .set() undefined görürse senkron ÇÖKER (sessiz hata)
+            payload = JSON.parse(JSON.stringify({ urunler: urunler, fisler: fisler, kurlar: kurlarRaw() }));
+        } catch (e) { _bulutDurum('⚠️ Veri okunamadı', '#f87171'); return; }
+        payload.updatedAt = Date.now();
         _lastSyncJson = _durumJson();
         _bulutDurum('☁️ Kaydediliyor…', '#93c5fd');
-        _fbRef.set({ urunler: urunler, fisler: fisler, kurlar: kurlarRaw(), updatedAt: Date.now() })
-            .then(function() { _bulutDurum('✅ Senkron: ' + (_user.email || ''), '#6ee7b7'); })
-            .catch(function() { _bulutDurum('⚠️ İnternet yok — gelince senkronlanacak', '#fbbf24'); });
+        try {
+            _fbRef.set(payload)
+                .then(function() { _bulutDurum('✅ Senkron: ' + (_user.email || ''), '#6ee7b7'); })
+                .catch(function() { _bulutDurum('⚠️ İnternet yok — gelince senkronlanacak', '#fbbf24'); });
+        } catch (e) { _bulutDurum('⚠️ Kaydetme hatası (veri düzeltiliyor)', '#f87171'); }
     }, 600);
 }
 
