@@ -320,7 +320,7 @@ body {
         <div id="bulutDurum" style="font-size:12px;color:#94a3b8;text-align:center;margin-bottom:8px;line-height:1.4">—</div>
         <button class="btn-yedek" onclick="baglantiTesti()" style="width:100%">🔧 Bağlantı Testi</button>
         <button class="btn-yedek" onclick="authCikis()" style="width:100%;margin-top:8px">🚪 Çıkış Yap</button>
-        <div class="surum-not">Sürüm 23 · Bulut senkron</div>
+        <div class="surum-not">Sürüm 24 · Bulut senkron</div>
     </div>
 
     <div class="card">
@@ -1116,7 +1116,7 @@ function fiseEklemeBitir() {
 
 /* ---------- Fiş paylaş (PDF / WhatsApp) ---------- */
 function fisBul(id) {
-    for (var i = 0; i < fisler.length; i++) if (fisler[i].id === id) return fisler[i];
+    for (var i = 0; i < fisler.length; i++) if (fisler[i] && String(fisler[i].id) === String(id)) return fisler[i];
     return null;
 }
 // Fişi düz metne dök (WhatsApp / paylaşım için)
@@ -1385,7 +1385,7 @@ var _fbConfig = {
 };
 var _user = null, _localLoaded = false, _applyingRemote = false, _fbReady = false;
 var _pushTimer = null, _lastSyncJson = null, _fbRef = null, _pendingPush = false;
-var _cloudFis = {}, _lastFisMap = {}, _rebuildTimer = null;
+var _cloudFis = {}, _lastFisMap = {}, _rebuildTimer = null, _retryCount = 0;
 
 function _authErr(msg) { var e = document.getElementById('authErr'); if (e) e.textContent = msg || ''; }
 function _bulutDurum(msg, renk) { var d = document.getElementById('bulutDurum'); if (d) { d.textContent = msg; d.style.color = renk || '#94a3b8'; } }
@@ -1423,32 +1423,49 @@ function bulutYaz() {
 }
 function _bulutGonder() {
     if (!_user || !_fbRef) { _pendingPush = false; return; }
+    _pendingPush = true;   // TÜM parçalar gidene kadar yerel veri korunur (gelen bulut ezmez)
     var base = firebase.database().ref('users/' + _user.uid);
-    var writes = [];
-    // 1) FİŞLER — her biri ayrı kayıt. Sadece DEĞİŞENleri yaz (koca arşiv de küçük parçalar halinde gider).
+    // Değişen/silinen fişleri topla
     var curMap = {};
     (fisler || []).forEach(function (f) { if (f && f.id != null) curMap[f.id] = f; });
+    var jobs = [];
     Object.keys(curMap).forEach(function (id) {
         var clean, s;
         try { clean = JSON.parse(JSON.stringify(curMap[id])); s = JSON.stringify(clean); } catch (e) { return; }
-        if (_lastFisMap[id] !== s) { writes.push(base.child('fisler/' + id).set(clean)); _lastFisMap[id] = s; }
+        if (_lastFisMap[id] !== s) jobs.push({ set: true, id: id, clean: clean, s: s });
     });
-    // silinen fişler → bulutdan da sil
-    Object.keys(_lastFisMap).forEach(function (id) {
-        if (!curMap[id]) { writes.push(base.child('fisler/' + id).remove()); delete _lastFisMap[id]; }
-    });
-    // 2) meta (sepet + kurlar — küçük)
+    Object.keys(_lastFisMap).forEach(function (id) { if (!curMap[id]) jobs.push({ set: false, id: id }); });
     var meta;
     try { meta = JSON.parse(JSON.stringify({ urunler: urunler, kurlar: kurlarRaw() })); } catch (e) { meta = { urunler: [], kurlar: {} }; }
     meta.updatedAt = Date.now();
-    writes.push(base.child('meta').set(meta));
-    if (!writes.length) { _pendingPush = false; _bulutDurum('✅ Senkron: ' + (_user.email || ''), '#6ee7b7'); return; }
-    _bulutDurum('☁️ Kaydediliyor… (' + writes.length + ' parça)', '#93c5fd');
-    Promise.all(writes).then(function () {
-        _pendingPush = false; _bulutDurum('✅ Senkron: ' + (_user.email || ''), '#6ee7b7');
-    }).catch(function (e) {
-        _pendingPush = false; _bulutDurum('⚠️ Bağlantı sorunu: ' + (e && (e.code || e.message) || ''), '#fbbf24');
-    });
+
+    var toplam = jobs.length, i = 0, hata = 0, BATCH = 6;
+    function bitir() {
+        base.child('meta').set(meta).catch(function () {});
+        if (hata > 0 && _retryCount < 8) {
+            _retryCount++;
+            _bulutDurum('⚠️ ' + hata + ' parça gitmedi — tekrar deniyorum (' + _retryCount + ')', '#fbbf24');
+            clearTimeout(_pushTimer); _pushTimer = setTimeout(_bulutGonder, 3000);  // _pendingPush TRUE kalır (yerel korunur)
+        } else {
+            _retryCount = 0; _pendingPush = false;
+            if (hata > 0) _bulutDurum('⚠️ ' + hata + ' parça gönderilemedi', '#f87171');
+            else _bulutDurum('✅ Senkron: ' + (_user.email || ''), '#6ee7b7');
+        }
+    }
+    if (!toplam) { bitir(); return; }
+    // Küçük gruplar halinde SIRAYLA yaz — bağlantıyı yormaz; her başarıda işaretle, başarısızı tekrar dener
+    function sonraki() {
+        if (i >= jobs.length) { bitir(); return; }
+        var grup = jobs.slice(i, i + BATCH); i += BATCH;
+        _bulutDurum('☁️ Kaydediliyor… ' + Math.min(i, toplam) + '/' + toplam, '#93c5fd');
+        Promise.all(grup.map(function (j) {
+            var ref = base.child('fisler/' + j.id);
+            return (j.set ? ref.set(j.clean) : ref.remove())
+                .then(function () { if (j.set) _lastFisMap[j.id] = j.s; else delete _lastFisMap[j.id]; })
+                .catch(function () { hata++; });
+        })).then(sonraki);
+    }
+    sonraki();
 }
 
 // Bulut dinleyicisini bağla — fişler PARÇA PARÇA (child) gelir; büyük tek-okuma/yazma yok
@@ -1497,7 +1514,7 @@ function baglantiTesti() {
     var u = (typeof firebase !== 'undefined' && firebase.auth) ? firebase.auth().currentUser : null;
     u = u || _user;
     var L = [];
-    L.push('Sürüm 23');
+    L.push('Sürüm 24');
     L.push('Giriş: ' + (u ? u.email : '❌ YOK'));
     L.push('uid: ' + (u ? u.uid.slice(0, 10) : '-'));
     L.push('firebase yüklü: ' + (typeof firebase !== 'undefined' ? 'evet' : '❌ HAYIR'));
