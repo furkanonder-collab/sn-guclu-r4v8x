@@ -311,7 +311,7 @@ body {
             <div class="field"><label>RMB Kuru</label><input type="number" id="rnb" value="6.60" step="0.01" inputmode="decimal" onchange="kurKaydet()"></div>
             <div class="field"><label>USD Kuru</label><input type="number" id="usd" value="45.00" step="0.01" inputmode="decimal" onchange="kurKaydet()"></div>
         </div>
-        <div class="card-title" style="margin-top:16px">🚚 Nakliye ($/ton)</div>
+        <div class="card-title" style="margin-top:16px">🚚 Nakliye ($/kg)</div>
         <div class="kur-grid uc">
             <div class="field"><label>Z</label><input type="number" id="zNak" value="52" step="0.5" inputmode="decimal" onchange="kurKaydet()"></div>
             <div class="field"><label>N</label><input type="number" id="nNak" value="42" step="0.5" inputmode="decimal" onchange="kurKaydet()"></div>
@@ -329,7 +329,7 @@ body {
         <button onclick="guncelle()" style="width:100%;margin-top:8px;background:linear-gradient(135deg,#6366f1,#4f46e5);border:none;color:#fff;border-radius:10px;padding:13px;font-size:14px;font-weight:700;cursor:pointer">🔄 Güncelle (En son sürüme geç)</button>
         <button class="btn-yedek" onclick="baglantiTesti()" style="width:100%;margin-top:8px">🔧 Bağlantı Testi</button>
         <button class="btn-yedek" onclick="authCikis()" style="width:100%;margin-top:8px">🚪 Çıkış Yap</button>
-        <div class="surum-not">Sürüm 32 · Bulut senkron</div>
+        <div class="surum-not">Sürüm 33 · Bulut senkron</div>
     </div>
 
     <div class="card">
@@ -499,6 +499,16 @@ function fislerKaydet() {
     dbSet('fisler', fisler).catch(function() { alert('Kaydetme sırasında bir sorun oldu. Yedek almanız önerilir.'); });
 }
 // Başlangıçta veriyi yükle; IndexedDB boşsa eski localStorage verisini (silmeden) taşı
+// Fiş id'lerini düzelt: sayıya çevir + id'siz olana benzersiz id ata (yoksa senkronsuz kalır / karşılaştırmalar bozulur)
+function _fisIdDuzelt() {
+    if (!Array.isArray(fisler)) { fisler = []; return; }
+    var t = Date.now();
+    for (var i = 0; i < fisler.length; i++) {
+        var fs = fisler[i]; if (!fs || typeof fs !== 'object') continue;
+        if (fs.id == null || fs.id === '') fs.id = t + i;
+        else { var n = +fs.id; if (!isNaN(n)) fs.id = n; }
+    }
+}
 function verileriYukle() {
     return Promise.all([dbGet('urunler'), dbGet('fisler')]).then(function(res) {
         var u = res[0], f = res[1];
@@ -558,6 +568,7 @@ function yedekBirlestir(input) {
             else atlandi++;
         });
         fisler.sort(function(a, b) { return (a.id || 0) - (b.id || 0); });
+        _fisIdDuzelt();
         fislerKaydet();
         renderFis(); tabRozetGuncelle();
         alert('🔀 Birleştirildi.\n\n✅ ' + eklendi + ' yeni sipariş eklendi.' + (atlandi ? '\n' + atlandi + ' sipariş zaten vardı (atlandı).' : '') + '\n\nToplam: ' + fisler.length + ' sipariş.');
@@ -583,6 +594,7 @@ function geriYukle(input) {
             }
             urunler = Array.isArray(veri.urunler) ? veri.urunler : [];
             fisler = Array.isArray(veri.fisler) ? veri.fisler : [];
+            _fisIdDuzelt();
             urunlerKaydet(); fislerKaydet();
             onGirisDegis(); renderFis(); tabRozetGuncelle();
             alert('✅ Yedek geri yüklendi.\n' + fisler.length + ' kayıtlı sipariş, ' + urunler.length + ' fiş ürünü.');
@@ -752,7 +764,7 @@ function toplam5Rows(liste, k, baslik) {
            nakliyeSatiri(toplamKg(liste), k);
 }
 
-function f(n) { return n.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+function f(n) { if (!isFinite(n)) n = 0; return n.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
 function escapeHtml(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 
 /* ---------- Önizleme (canlı) ---------- */
@@ -982,7 +994,7 @@ function fislerRender() {
         var fy = fisYuan(fs.urunler);
         gY += fy; gU += yuanUsd(fy, fs.kurlar || {});
         gCesit += fs.urunler.length; gAdet += toplamAdet(fs.urunler); gKg += toplamKg(fs.urunler);
-        var du = DURUMLAR[dd], vm = varisMetni(fs);
+        var du = DURUMLAR[dd] || DURUMLAR[0], vm = varisMetni(fs);
         html += '<div class="swipe-wrap">' +
             '<div class="swipe-actions"><div class="swipe-act pdf" onclick="fisPdf(' + fs.id + ')"><span class="ico">📄</span>PDF</div><div class="swipe-act wa" onclick="fisWhatsapp(' + fs.id + ')"><span class="ico">💬</span>WhatsApp</div></div>' +
             '<div class="swipe-sil" onclick="fisSil(' + fs.id + ')"><span class="ico">🗑️</span>Sil</div>' +
@@ -1312,6 +1324,7 @@ function tabRozetGuncelle() {
 
 // Veri IndexedDB'den (ilk açılışta localStorage'dan taşınarak) yüklenince ekranı çiz
 verileriYukle().then(function() {
+    _fisIdDuzelt();
     renderFis();
     tabRozetGuncelle();
     _localLoaded = true;
@@ -1404,10 +1417,10 @@ if ('serviceWorker' in navigator) {
 var _sonResync = 0;
 function _yenidenSenkron() {
     if (!_user || !_fbReady) return;
+    if (_pendingPush) return;   // gönderim/tekrar-deneme sürüyorsa dokunma (yerel değişikliği düşürme); takılırsa watchdog bırakır
     var now = (window.performance && performance.now) ? performance.now() : 0;
     if (now && (now - _sonResync) < 3000) return;  // çok sık tetikleme
     _sonResync = now;
-    _pendingPush = false; clearTimeout(_pushTimer); clearTimeout(_pushWatchdog);  // takılı bayrağı BIRAK (gelen güncellemeler engellenmesin)
     if (_fbRef) { try { _fbRef.child('fisler').off(); _fbRef.child('meta').off(); _fbRef.off(); } catch(e){} _fbRef = null; }
     baglanCloud();
 }
@@ -1467,6 +1480,8 @@ function bulutYaz() {
 function _bulutGonder() {
     if (!_user || !_fbRef) { _pendingPush = false; return; }
     _pendingPush = true;   // TÜM parçalar gidene kadar yerel veri korunur (gelen bulut ezmez)
+    clearTimeout(_pushWatchdog);
+    _pushWatchdog = setTimeout(function () { _pendingPush = false; }, 30000);  // her denemede yenilenir → sadece GERÇEKTEN takılırsa bırakır
     var base = firebase.database().ref('users/' + _user.uid);
     // Değişen/silinen fişleri topla
     var curMap = {};
@@ -1490,9 +1505,9 @@ function _bulutGonder() {
             _bulutDurum('⚠️ ' + hata + ' parça gitmedi — tekrar deniyorum (' + _retryCount + ')', '#fbbf24');
             clearTimeout(_pushTimer); _pushTimer = setTimeout(_bulutGonder, 3000);  // _pendingPush TRUE kalır (yerel korunur)
         } else {
-            _retryCount = 0; _pendingPush = false;
+            _retryCount = 0; _pendingPush = false; clearTimeout(_pushWatchdog);
             if (hata > 0) _bulutDurum('⚠️ ' + hata + ' parça gönderilemedi', '#f87171');
-            else _bulutDurum('✅ Senkron: ' + (_user.email || ''), '#6ee7b7');
+            else { _senkronIsaretle(); _bulutDurum('✅ Senkron: ' + (_user.email || ''), '#6ee7b7'); }   // yazma başarılı → bulut doğrulandı
         }
     }
     if (!toplam) { bitir(); return; }
@@ -1511,6 +1526,8 @@ function _bulutGonder() {
     sonraki();
 }
 
+// "Bu cihaz bu hesabın bulut durumunu doğruladı" işareti — SADECE bulutta veri görülünce ya da başarılı yazınca çağrılır
+function _senkronIsaretle() { if (_user) { try { localStorage.setItem('smh_synced_' + _user.uid, '1'); } catch (e) {} } }
 // Bulut dinleyicisini bağla — fişler PARÇA PARÇA (child) gelir; büyük tek-okuma/yazma yok
 function baglanCloud() {
     if (!_user || !_fbReady) return;
@@ -1518,9 +1535,23 @@ function baglanCloud() {
     var base = firebase.database().ref('users/' + _user.uid);
     _fbRef = base; _cloudFis = {}; _lastFisMap = {};
     var fref = base.child('fisler');
-    // İlk durum: bulut boş + yerelde veri varsa → yerel KORUNUR, buluta yüklenir (WIPE YOK)
+    // İlk durum kontrolü — SİLME'nin geri dirilmesini önler.
+    // Bayrak SADECE bulut doğrulandığında set edilir (rebuild / başarılı yazma), bağlanır bağlanmaz DEĞİL → seed yarışı yok.
     fref.once('value').then(function (snap) {
-        if (!snap.exists() && fisler && fisler.length) { _bulutDurum('☁️ İlk yükleme…', '#93c5fd'); bulutYaz(); }
+        var oncedenSenkron = false;
+        try { oncedenSenkron = localStorage.getItem('smh_synced_' + _user.uid) === '1'; } catch (e) {}
+        if (!snap.exists()) {
+            if (!oncedenSenkron && fisler && fisler.length) {
+                _bulutDurum('☁️ İlk yükleme…', '#93c5fd'); bulutYaz();        // GERÇEK ilk kurulum → yerel veriyi buluta yükle
+            } else if (oncedenSenkron && fisler && fisler.length) {
+                // Daha önce senkron olmuştuk, bulut ŞİMDİ boş → başka cihaz HER ŞEYİ SİLDİ → yereli de boşalt (resurrection YOK)
+                _applyingRemote = true; try { fisler = []; dbSet('fisler', fisler); } catch (e) {} _applyingRemote = false;
+                tabRozetGuncelle(); try { _ekranYenile(); } catch (e) {}
+                _bulutDurum('🔄 Güncellendi · ' + (_user.email || ''), '#6ee7b7');
+            }
+        } else {
+            _senkronIsaretle();   // bulutta veri VAR → senkron doğrulandı
+        }
     }).catch(function () {});
     // Fişleri yeniden kur (child olayları biriktikçe, kısa gecikmeyle tek sefer)
     var rebuild = function () {
@@ -1528,13 +1559,16 @@ function baglanCloud() {
         _rebuildTimer = setTimeout(function () {
             if (_pendingPush) return;   // kendi yazımız sürerken dokunma
             _applyingRemote = true;
-            fisler = Object.keys(_cloudFis).map(function (k) { return _cloudFis[k]; }).sort(function (a, b) { return (a.id || 0) - (b.id || 0); });
-            for (var _z = 0; _z < fisler.length; _z++) { var _f = fisler[_z]; if (_f && _f.id != null) { var _n = +_f.id; if (!isNaN(_n)) _f.id = _n; } }
-            _lastFisMap = {};
-            Object.keys(_cloudFis).forEach(function (id) { try { _lastFisMap[id] = JSON.stringify(_cloudFis[id]); } catch (e) {} });
-            dbSet('fisler', fisler);
-            _applyingRemote = false;
-            _ekranYenile();
+            try {
+                fisler = Object.keys(_cloudFis).map(function (k) { return _cloudFis[k]; }).sort(function (a, b) { return (a.id || 0) - (b.id || 0); });
+                for (var _z = 0; _z < fisler.length; _z++) { var _f = fisler[_z]; if (_f && _f.id != null) { var _n = +_f.id; if (!isNaN(_n)) _f.id = _n; } }
+                _lastFisMap = {};
+                Object.keys(_cloudFis).forEach(function (id) { try { _lastFisMap[id] = JSON.stringify(_cloudFis[id]); } catch (e) {} });
+                dbSet('fisler', fisler);
+                _senkronIsaretle();
+            } catch (e) {}
+            _applyingRemote = false;   // HER ZAMAN bırak (donma yok)
+            try { _ekranYenile(); } catch (e) {}
             _bulutDurum('✅ Senkron: ' + (_user.email || ''), '#6ee7b7');
         }, 50);
     };
@@ -1546,10 +1580,12 @@ function baglanCloud() {
         if (_pendingPush) return;
         var m = s.val(); if (!m) return;
         _applyingRemote = true;
-        if (Array.isArray(m.urunler)) { urunler = m.urunler; dbSet('urunler', urunler); }
-        _kurlariUygula(m.kurlar);
-        _applyingRemote = false;
-        onGirisDegis(); _ekranYenile();
+        try {
+            if (Array.isArray(m.urunler)) { urunler = m.urunler; dbSet('urunler', urunler); }
+            _kurlariUygula(m.kurlar);
+        } catch (e) {}
+        _applyingRemote = false;   // HER ZAMAN bırak
+        try { onGirisDegis(); _ekranYenile(); } catch (e) {}
     }, function () {});
 }
 function _cloudBaslatBekle() { if (_user && _localLoaded && _fbReady) baglanCloud(); }
@@ -1588,7 +1624,7 @@ function baglantiTesti() {
     var u = (typeof firebase !== 'undefined' && firebase.auth) ? firebase.auth().currentUser : null;
     u = u || _user;
     var L = [];
-    L.push('Sürüm 32');
+    L.push('Sürüm 33');
     L.push('Giriş: ' + (u ? u.email : '❌ YOK'));
     L.push('uid: ' + (u ? u.uid.slice(0, 10) : '-'));
     L.push('firebase yüklü: ' + (typeof firebase !== 'undefined' ? 'evet' : '❌ HAYIR'));
