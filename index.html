@@ -18,7 +18,9 @@ body {
 }
 
 .header { text-align: center; padding: 20px 0 12px; }
-.logo { width: 44px; height: 44px; border-radius: 13px; background: linear-gradient(135deg,#3b82f6,#8b5cf6); display: inline-flex; align-items: center; justify-content: center; font-size: 23px; box-shadow: 0 8px 24px rgba(59,130,246,0.35); margin-bottom: 6px; }
+.logo { width: 44px; height: 44px; border-radius: 13px; background: linear-gradient(135deg,#3b82f6,#8b5cf6); display: inline-flex; align-items: center; justify-content: center; font-size: 23px; box-shadow: 0 8px 24px rgba(59,130,246,0.35); margin-bottom: 6px; cursor: pointer; transition: transform 0.6s ease; -webkit-tap-highlight-color: transparent; }
+.logo:active { transform: scale(0.92); }
+.logo.donuyor { transform: rotate(360deg); }
 .header h1 { font-size: 19px; font-weight: 700; letter-spacing: -0.3px; }
 .header small { color: #64748b; font-size: 12px; }
 
@@ -288,9 +290,9 @@ body {
 </div>
 
 <div class="header">
-    <div class="logo">⚡</div>
+    <div class="logo" id="logoBtn" onclick="ikonGuncelle()" title="Dokun: yenile & güncelle">⚡</div>
     <h1>Şok Nokta</h1>
-    <small>Sipariş maliyet hesaplayıcı</small>
+    <small>Dokun ⚡ → yenile & güncelle</small>
 </div>
 
 <!-- ============ ÜRÜN EKLE ============ -->
@@ -327,7 +329,7 @@ body {
         <button onclick="guncelle()" style="width:100%;margin-top:8px;background:linear-gradient(135deg,#6366f1,#4f46e5);border:none;color:#fff;border-radius:10px;padding:13px;font-size:14px;font-weight:700;cursor:pointer">🔄 Güncelle (En son sürüme geç)</button>
         <button class="btn-yedek" onclick="baglantiTesti()" style="width:100%;margin-top:8px">🔧 Bağlantı Testi</button>
         <button class="btn-yedek" onclick="authCikis()" style="width:100%;margin-top:8px">🚪 Çıkış Yap</button>
-        <div class="surum-not">Sürüm 30 · Bulut senkron</div>
+        <div class="surum-not">Sürüm 31 · Bulut senkron</div>
     </div>
 
     <div class="card">
@@ -1548,6 +1550,18 @@ function baglanCloud() {
 }
 function _cloudBaslatBekle() { if (_user && _localLoaded && _fbReady) baglanCloud(); }
 
+// ⚡ ikonuna dokununca: canlı senkronu tazele + yeni sürüm kontrolü (yeni varsa otomatik yükler)
+function ikonGuncelle() {
+    var lg = document.getElementById('logoBtn');
+    if (lg) { lg.classList.add('donuyor'); setTimeout(function () { lg.classList.remove('donuyor'); }, 650); }
+    _bulutDurum('🔄 Yenileniyor…', '#93c5fd');
+    _sonResync = 0; _yenidenSenkron();   // buluttan yeniden senkron
+    if ('serviceWorker' in navigator && navigator.serviceWorker.getRegistration) {
+        navigator.serviceWorker.getRegistration().then(function (reg) { if (reg) try { reg.update(); } catch (e) {} }).catch(function () {});
+    }
+    setTimeout(function () { if (_user) _bulutDurum('✅ Güncel · ' + (_user.email || ''), '#6ee7b7'); }, 1300);
+}
+
 // En son sürüme zorla güncelle — önbelleği temizler + SW'yi sıfırlar + yeniden yükler (veriler silinmez)
 function guncelle() {
     if (!confirm('Uygulama en son sürüme güncellenecek.\n(Siparişlerin ve verilerin SİLİNMEZ.)\n\nDevam edilsin mi?')) return;
@@ -1570,7 +1584,7 @@ function baglantiTesti() {
     var u = (typeof firebase !== 'undefined' && firebase.auth) ? firebase.auth().currentUser : null;
     u = u || _user;
     var L = [];
-    L.push('Sürüm 30');
+    L.push('Sürüm 31');
     L.push('Giriş: ' + (u ? u.email : '❌ YOK'));
     L.push('uid: ' + (u ? u.uid.slice(0, 10) : '-'));
     L.push('firebase yüklü: ' + (typeof firebase !== 'undefined' ? 'evet' : '❌ HAYIR'));
