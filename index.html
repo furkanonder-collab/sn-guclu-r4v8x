@@ -324,9 +324,10 @@ body {
         <div style="color:#64748b;font-size:11px;margin-top:7px;line-height:1.5;text-align:center">⬆️ Geri Yükle = mevcut veriyi <b>değiştirir</b><br>🔀 Birleştir = başka telefonun siparişlerini <b>silmeden ekler</b></div>
         <div class="card-title" style="margin-top:16px">☁️ Bulut Senkron</div>
         <div id="bulutDurum" style="font-size:12px;color:#94a3b8;text-align:center;margin-bottom:8px;line-height:1.4">—</div>
-        <button class="btn-yedek" onclick="baglantiTesti()" style="width:100%">🔧 Bağlantı Testi</button>
+        <button onclick="guncelle()" style="width:100%;margin-top:8px;background:linear-gradient(135deg,#6366f1,#4f46e5);border:none;color:#fff;border-radius:10px;padding:13px;font-size:14px;font-weight:700;cursor:pointer">🔄 Güncelle (En son sürüme geç)</button>
+        <button class="btn-yedek" onclick="baglantiTesti()" style="width:100%;margin-top:8px">🔧 Bağlantı Testi</button>
         <button class="btn-yedek" onclick="authCikis()" style="width:100%;margin-top:8px">🚪 Çıkış Yap</button>
-        <div class="surum-not">Sürüm 29 · Bulut senkron</div>
+        <div class="surum-not">Sürüm 30 · Bulut senkron</div>
     </div>
 
     <div class="card">
@@ -1547,12 +1548,29 @@ function baglanCloud() {
 }
 function _cloudBaslatBekle() { if (_user && _localLoaded && _fbReady) baglanCloud(); }
 
+// En son sürüme zorla güncelle — önbelleği temizler + SW'yi sıfırlar + yeniden yükler (veriler silinmez)
+function guncelle() {
+    if (!confirm('Uygulama en son sürüme güncellenecek.\n(Siparişlerin ve verilerin SİLİNMEZ.)\n\nDevam edilsin mi?')) return;
+    _bulutDurum('🔄 Güncelleniyor…', '#93c5fd');
+    var bitir = function () { try { location.reload(); } catch (e) { location.href = location.pathname + '?g=' + Date.now(); } };
+    var p = Promise.resolve();
+    if (window.caches && caches.keys) {
+        p = caches.keys().then(function (keys) { return Promise.all(keys.map(function (k) { return caches.delete(k); })); }).catch(function () {});
+    }
+    p.then(function () {
+        if ('serviceWorker' in navigator && navigator.serviceWorker.getRegistrations) {
+            return navigator.serviceWorker.getRegistrations().then(function (regs) { return Promise.all(regs.map(function (r) { return r.unregister(); })); }).catch(function () {});
+        }
+    }).then(bitir).catch(bitir);
+    setTimeout(bitir, 2500);  // her ihtimale karşı
+}
+
 // Bağlantı/senkron röntgeni — sorunu ekranda gösterir
 function baglantiTesti() {
     var u = (typeof firebase !== 'undefined' && firebase.auth) ? firebase.auth().currentUser : null;
     u = u || _user;
     var L = [];
-    L.push('Sürüm 29');
+    L.push('Sürüm 30');
     L.push('Giriş: ' + (u ? u.email : '❌ YOK'));
     L.push('uid: ' + (u ? u.uid.slice(0, 10) : '-'));
     L.push('firebase yüklü: ' + (typeof firebase !== 'undefined' ? 'evet' : '❌ HAYIR'));
