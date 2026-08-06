@@ -329,7 +329,7 @@ body {
         <button onclick="guncelle()" style="width:100%;margin-top:8px;background:linear-gradient(135deg,#6366f1,#4f46e5);border:none;color:#fff;border-radius:10px;padding:13px;font-size:14px;font-weight:700;cursor:pointer">🔄 Güncelle (En son sürüme geç)</button>
         <button class="btn-yedek" onclick="baglantiTesti()" style="width:100%;margin-top:8px">🔧 Bağlantı Testi</button>
         <button class="btn-yedek" onclick="authCikis()" style="width:100%;margin-top:8px">🚪 Çıkış Yap</button>
-        <div class="surum-not">Sürüm 31 · Bulut senkron</div>
+        <div class="surum-not">Sürüm 32 · Bulut senkron</div>
     </div>
 
     <div class="card">
@@ -1407,6 +1407,7 @@ function _yenidenSenkron() {
     var now = (window.performance && performance.now) ? performance.now() : 0;
     if (now && (now - _sonResync) < 3000) return;  // çok sık tetikleme
     _sonResync = now;
+    _pendingPush = false; clearTimeout(_pushTimer); clearTimeout(_pushWatchdog);  // takılı bayrağı BIRAK (gelen güncellemeler engellenmesin)
     if (_fbRef) { try { _fbRef.child('fisler').off(); _fbRef.child('meta').off(); _fbRef.off(); } catch(e){} _fbRef = null; }
     baglanCloud();
 }
@@ -1425,7 +1426,7 @@ var _fbConfig = {
 };
 var _user = null, _localLoaded = false, _applyingRemote = false, _fbReady = false;
 var _pushTimer = null, _lastSyncJson = null, _fbRef = null, _pendingPush = false;
-var _cloudFis = {}, _lastFisMap = {}, _rebuildTimer = null, _retryCount = 0;
+var _cloudFis = {}, _lastFisMap = {}, _rebuildTimer = null, _retryCount = 0, _pushWatchdog = null;
 
 function _authErr(msg) { var e = document.getElementById('authErr'); if (e) e.textContent = msg || ''; }
 function _bulutDurum(msg, renk) { var d = document.getElementById('bulutDurum'); if (d) { d.textContent = msg; d.style.color = renk || '#94a3b8'; } }
@@ -1458,6 +1459,8 @@ function _durumJson() { return JSON.stringify({ urunler: urunler, fisler: fisler
 function bulutYaz() {
     if (!_user || !_fbReady || _applyingRemote) return;
     _pendingPush = true;   // gönderim bitene kadar gelen bulutu yok say (saat farkından BAĞIMSIZ yarış önleme)
+    clearTimeout(_pushWatchdog);
+    _pushWatchdog = setTimeout(function () { _pendingPush = false; }, 30000);  // TAKILMA KORUMASI: 30sn içinde bitmezse bayrağı bırak (yoksa gelen güncellemeler sonsuza dek engellenir)
     clearTimeout(_pushTimer);
     _pushTimer = setTimeout(_bulutGonder, 150);
 }
@@ -1511,6 +1514,7 @@ function _bulutGonder() {
 // Bulut dinleyicisini bağla — fişler PARÇA PARÇA (child) gelir; büyük tek-okuma/yazma yok
 function baglanCloud() {
     if (!_user || !_fbReady) return;
+    _pendingPush = false; clearTimeout(_pushWatchdog);  // yeni bağlantı = temiz durum (takılı bayrak taşınmasın)
     var base = firebase.database().ref('users/' + _user.uid);
     _fbRef = base; _cloudFis = {}; _lastFisMap = {};
     var fref = base.child('fisler');
@@ -1584,7 +1588,7 @@ function baglantiTesti() {
     var u = (typeof firebase !== 'undefined' && firebase.auth) ? firebase.auth().currentUser : null;
     u = u || _user;
     var L = [];
-    L.push('Sürüm 31');
+    L.push('Sürüm 32');
     L.push('Giriş: ' + (u ? u.email : '❌ YOK'));
     L.push('uid: ' + (u ? u.uid.slice(0, 10) : '-'));
     L.push('firebase yüklü: ' + (typeof firebase !== 'undefined' ? 'evet' : '❌ HAYIR'));
