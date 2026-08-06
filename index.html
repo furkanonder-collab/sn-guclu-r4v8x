@@ -226,6 +226,12 @@ body {
 .foto-nav.sol { left: 10px; }
 .foto-nav.sag { right: 10px; }
 .foto-sayac { position: fixed; bottom: 24px; left: 0; right: 0; text-align: center; color: #fff; font-size: 15px; font-weight: 700; text-shadow: 0 1px 3px rgba(0,0,0,0.6); z-index: 101; }
+.foto-geldi { position: fixed; bottom: 58px; left: 0; right: 0; display: none; gap: 12px; justify-content: center; z-index: 102; padding: 0 16px; }
+.fg-btn { border: none; border-radius: 12px; padding: 14px 24px; font-size: 15px; font-weight: 800; cursor: pointer; box-shadow: 0 6px 18px rgba(0,0,0,0.5); color: #fff; }
+.fg-btn.tam { background: rgba(22,163,74,0.9); }
+.fg-btn.yok { background: rgba(220,38,38,0.85); }
+.fg-btn.tam.on { background: #16a34a; outline: 3px solid #4ade80; }
+.fg-btn.yok.on { background: #dc2626; outline: 3px solid #f87171; }
 .surum-not { text-align: center; color: #475569; font-size: 11px; margin-top: 14px; }
 .fk-modal { position: fixed; inset: 0; background: rgba(0,0,0,0.75); display: none; align-items: center; justify-content: center; z-index: 120; padding: 20px; }
 .fk-modal.acik { display: flex; }
@@ -320,7 +326,7 @@ body {
         <div id="bulutDurum" style="font-size:12px;color:#94a3b8;text-align:center;margin-bottom:8px;line-height:1.4">—</div>
         <button class="btn-yedek" onclick="baglantiTesti()" style="width:100%">🔧 Bağlantı Testi</button>
         <button class="btn-yedek" onclick="authCikis()" style="width:100%;margin-top:8px">🚪 Çıkış Yap</button>
-        <div class="surum-not">Sürüm 25 · Bulut senkron</div>
+        <div class="surum-not">Sürüm 26 · Bulut senkron</div>
     </div>
 
     <div class="card">
@@ -390,6 +396,10 @@ body {
     <button class="foto-nav sol" id="fotoNavSol" onclick="event.stopPropagation();galeriKaydir(-1)">‹</button>
     <img id="fotoModalImg" src="">
     <button class="foto-nav sag" id="fotoNavSag" onclick="event.stopPropagation();galeriKaydir(1)">›</button>
+    <div class="foto-geldi" id="fotoGeldiBar" style="display:none">
+        <button class="fg-btn tam" id="fotoGeldiTam" onclick="event.stopPropagation();galeriGeldiSet(true)">✓ Geldi</button>
+        <button class="fg-btn yok" id="fotoGeldiYok" onclick="event.stopPropagation();galeriGeldiSet(false)">✗ Gelmedi</button>
+    </div>
     <div class="foto-sayac" id="fotoSayac"></div>
 </div>
 
@@ -419,7 +429,7 @@ var aktifFisId = null;  // kayıtlı bir fişe ürün ekleme modu (null = normal
 var _fisKartFoto = null; // fiş kaydetme modalındaki firma kartı resmi
 var _kartFisId = null;   // kayıtlı fişe kart resmi eklerken hedef fiş id
 var _siparisScroll = 0;  // Siparişler listesindeki kaydırma konumu (fişten çıkınca geri dön)
-var _galeri = [], _galeriIndex = 0; // fiş içi ürün resmi galerisi
+var _galeri = [], _galeriIndex = 0, _galeriMeta = []; // fiş içi ürün resmi galerisi (+ her resmin fiş/ürün bilgisi)
 var _zoomScale = 1, _zoomX = 0, _zoomY = 0; // foto modal yakınlaştırma / kaydırma
 var _acikFisId = null; // detayda açık olan fiş (kaydırarak sipariş gezme)
 var _siparisFiltre = 0; // 0=Tümü, 1=Bekleyen (verildi+yolda), 2=Geldi
@@ -628,14 +638,16 @@ function girisFotoGuncelle() {
     else w.innerHTML = '<button class="foto-ekle" onclick="fotoGirisSec()">📷</button>';
 }
 function fotoBuyutEl(el) {
-    if (el.classList.contains('urun-foto')) {
-        // Aynı fişteki tüm ürün resimlerini galeri olarak topla
-        var c = el.closest('#fisDetay') || el.closest('#fisUrunList') || document;
-        var imgs = [].slice.call(c.querySelectorAll('.urun-foto'));
+    var cls = el.classList.contains('urun-foto') ? '.urun-foto' : (el.classList.contains('takip-foto') ? '.takip-foto' : null);
+    if (cls) {
+        // Aynı bağlamdaki tüm ürün resimlerini galeri olarak topla (+ fiş/ürün bilgisi)
+        var c = el.closest('#fisDetay') || el.closest('#fisUrunList') || el.closest('#gelenlerList') || document;
+        var imgs = [].slice.call(c.querySelectorAll(cls));
         _galeri = imgs.map(function(x) { return x.src; });
+        _galeriMeta = imgs.map(function(x) { var fi = x.getAttribute('data-fis'), j = x.getAttribute('data-j'); return (fi != null && j != null) ? { fisId: fi, j: +j } : null; });
         _galeriIndex = imgs.indexOf(el); if (_galeriIndex < 0) _galeriIndex = 0;
     } else {
-        _galeri = [el.src]; _galeriIndex = 0;
+        _galeri = [el.src]; _galeriMeta = [null]; _galeriIndex = 0;
     }
     galeriGoster();
 }
@@ -647,7 +659,24 @@ function galeriGoster() {
     document.getElementById('fotoSayac').textContent = cok ? (_galeriIndex + 1) + ' / ' + _galeri.length : '';
     document.getElementById('fotoNavSol').style.display = cok ? 'flex' : 'none';
     document.getElementById('fotoNavSag').style.display = cok ? 'flex' : 'none';
+    galeriGeldiGuncelle();
     document.getElementById('fotoModal').classList.add('acik');
+}
+// Tam ekran resimdeyken o ürünü Geldi/Gelmedi işaretle (resimden çıkmadan)
+function galeriGeldiGuncelle() {
+    var bar = document.getElementById('fotoGeldiBar'); if (!bar) return;
+    var m = _galeriMeta[_galeriIndex];
+    var fs = m ? fisBul(m.fisId) : null;
+    var u = (fs && fs.urunler) ? fs.urunler[m.j] : null;
+    if (!u) { bar.style.display = 'none'; return; }
+    bar.style.display = 'flex';
+    document.getElementById('fotoGeldiTam').classList.toggle('on', u.geldi === true);
+    document.getElementById('fotoGeldiYok').classList.toggle('on', u.geldi === false);
+}
+function galeriGeldiSet(deger) {
+    var m = _galeriMeta[_galeriIndex]; if (!m) return;
+    urunGeldiSet(m.fisId, m.j, deger);   // toggle + kaydet + alttaki listeyi tazele (modal açık kalır)
+    galeriGeldiGuncelle();
 }
 function galeriKaydir(yon) {
     if (_galeri.length < 2) return;
@@ -791,7 +820,7 @@ function urunKartHtml(u, i, k, editable, silOnclick, fisId) {
     var h = hesapla(u.gram, u.fiyat, u.gb || 1, k);
     var satisToplam = h.ortGuclu * adet;
     var s = '<div class="urun-item"><div class="urun-head">';
-    if (u.img) s += '<img class="urun-foto" src="' + u.img + '" onclick="fotoBuyutEl(this)">';
+    if (u.img) s += '<img class="urun-foto" src="' + u.img + '"' + (fisId != null ? ' data-fis="' + fisId + '" data-j="' + i + '"' : '') + ' onclick="fotoBuyutEl(this)">';
     else if (editable) s += '<button class="foto-ekle" onclick="fotoTiklandi(' + i + ')">📷</button>';
     else s += '<div class="foto-ekle" style="cursor:default">🖼️</div>';
     s += '<div class="urun-badge">' + (i+1) + '</div>';
@@ -1213,7 +1242,7 @@ function gelenlerFiltre(f) { _gelenlerFiltre = f; gelenlerRender(); }
 function urunTakipKart(fisId, j, u) {
     var gd = urunGeldiDurum(u);
     var s = '<div class="takip-kart">';
-    s += (u.img ? '<img class="takip-foto" src="' + u.img + '" onclick="fotoBuyutEl(this)">' : '<div class="takip-foto no">🖼️</div>');
+    s += (u.img ? '<img class="takip-foto" src="' + u.img + '" data-fis="' + fisId + '" data-j="' + j + '" onclick="fotoBuyutEl(this)">' : '<div class="takip-foto no">🖼️</div>');
     s += '<div class="takip-info"><div class="takip-ust"><b>' + u.gram + 'g · ' + u.fiyat + '¥</b></div>' +
         '<div class="ug-durum" style="color:' + gd.renk + '">' + gd.ikon + ' ' + gd.ad + '</div></div>';
     s += '<div class="ug-ctrl">' +
@@ -1307,7 +1336,7 @@ document.getElementById('onAdet').addEventListener('keydown', function(e) {
     function mesafe(a, b) { var dx = a.clientX - b.clientX, dy = a.clientY - b.clientY; return Math.sqrt(dx * dx + dy * dy); }
 
     m.addEventListener('touchstart', function(e) {
-        if (e.target.closest('.foto-nav')) return;
+        if (e.target.closest('.foto-nav') || e.target.closest('.foto-geldi')) return;
         if (e.touches.length === 2) { pinchD0 = mesafe(e.touches[0], e.touches[1]); scale0 = _zoomScale; }
         else if (e.touches.length === 1) { var t = e.touches[0]; sx = t.clientX; sy = t.clientY; panX0 = _zoomX; panY0 = _zoomY; }
     }, { passive: true });
@@ -1325,7 +1354,7 @@ document.getElementById('onAdet').addEventListener('keydown', function(e) {
     }, { passive: false });
 
     m.addEventListener('touchend', function(e) {
-        if (e.target.closest('.foto-nav')) return;
+        if (e.target.closest('.foto-nav') || e.target.closest('.foto-geldi')) return;
         if (pinchD0 > 0) { if (e.touches.length === 0) pinchD0 = 0; return; }
         var t = e.changedTouches[0], dx = t.clientX - sx, dy = t.clientY - sy;
         if (Math.abs(dx) < 10 && Math.abs(dy) < 10) {           // dokunma
@@ -1509,7 +1538,7 @@ function baglantiTesti() {
     var u = (typeof firebase !== 'undefined' && firebase.auth) ? firebase.auth().currentUser : null;
     u = u || _user;
     var L = [];
-    L.push('Sürüm 25');
+    L.push('Sürüm 26');
     L.push('Giriş: ' + (u ? u.email : '❌ YOK'));
     L.push('uid: ' + (u ? u.uid.slice(0, 10) : '-'));
     L.push('firebase yüklü: ' + (typeof firebase !== 'undefined' ? 'evet' : '❌ HAYIR'));
