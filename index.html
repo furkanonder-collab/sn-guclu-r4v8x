@@ -326,7 +326,7 @@ body {
         <div id="bulutDurum" style="font-size:12px;color:#94a3b8;text-align:center;margin-bottom:8px;line-height:1.4">—</div>
         <button class="btn-yedek" onclick="baglantiTesti()" style="width:100%">🔧 Bağlantı Testi</button>
         <button class="btn-yedek" onclick="authCikis()" style="width:100%;margin-top:8px">🚪 Çıkış Yap</button>
-        <div class="surum-not">Sürüm 28 · Bulut senkron</div>
+        <div class="surum-not">Sürüm 29 · Bulut senkron</div>
     </div>
 
     <div class="card">
@@ -1397,6 +1397,19 @@ if ('serviceWorker' in navigator) {
     });
 }
 
+// Sekmeye/uygulamaya her dönüşte yeniden senkronla — pasifken kaçırılan silme/değişiklikleri yakalar
+var _sonResync = 0;
+function _yenidenSenkron() {
+    if (!_user || !_fbReady) return;
+    var now = (window.performance && performance.now) ? performance.now() : 0;
+    if (now && (now - _sonResync) < 3000) return;  // çok sık tetikleme
+    _sonResync = now;
+    if (_fbRef) { try { _fbRef.child('fisler').off(); _fbRef.child('meta').off(); _fbRef.off(); } catch(e){} _fbRef = null; }
+    baglanCloud();
+}
+document.addEventListener('visibilitychange', function() { if (document.visibilityState === 'visible') _yenidenSenkron(); });
+window.addEventListener('focus', _yenidenSenkron);
+
 /* ==================== FIREBASE BULUT SENKRON ==================== */
 var _fbConfig = {
     apiKey: "AIzaSyDMQqZuCBYVd6bPFxMzTZbqHr8WW1fwk6s",
@@ -1509,6 +1522,7 @@ function baglanCloud() {
             if (_pendingPush) return;   // kendi yazımız sürerken dokunma
             _applyingRemote = true;
             fisler = Object.keys(_cloudFis).map(function (k) { return _cloudFis[k]; }).sort(function (a, b) { return (a.id || 0) - (b.id || 0); });
+            for (var _z = 0; _z < fisler.length; _z++) { var _f = fisler[_z]; if (_f && _f.id != null) { var _n = +_f.id; if (!isNaN(_n)) _f.id = _n; } }
             _lastFisMap = {};
             Object.keys(_cloudFis).forEach(function (id) { try { _lastFisMap[id] = JSON.stringify(_cloudFis[id]); } catch (e) {} });
             dbSet('fisler', fisler);
@@ -1538,7 +1552,7 @@ function baglantiTesti() {
     var u = (typeof firebase !== 'undefined' && firebase.auth) ? firebase.auth().currentUser : null;
     u = u || _user;
     var L = [];
-    L.push('Sürüm 28');
+    L.push('Sürüm 29');
     L.push('Giriş: ' + (u ? u.email : '❌ YOK'));
     L.push('uid: ' + (u ? u.uid.slice(0, 10) : '-'));
     L.push('firebase yüklü: ' + (typeof firebase !== 'undefined' ? 'evet' : '❌ HAYIR'));
