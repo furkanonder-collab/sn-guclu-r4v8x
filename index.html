@@ -320,7 +320,7 @@ body {
         <div id="bulutDurum" style="font-size:12px;color:#94a3b8;text-align:center;margin-bottom:8px;line-height:1.4">—</div>
         <button class="btn-yedek" onclick="baglantiTesti()" style="width:100%">🔧 Bağlantı Testi</button>
         <button class="btn-yedek" onclick="authCikis()" style="width:100%;margin-top:8px">🚪 Çıkış Yap</button>
-        <div class="surum-not">Sürüm 24 · Bulut senkron</div>
+        <div class="surum-not">Sürüm 25 · Bulut senkron</div>
     </div>
 
     <div class="card">
@@ -939,12 +939,7 @@ function fislerRender() {
         el.innerHTML = '<div class="empty"><div class="ico">📋</div><p>Henüz kayıtlı sipariş yok.<br>Fiş sekmesinden kaydet.</p></div>';
         return;
     }
-    var say = [0, 0, 0]; fisler.forEach(function (x) { say[x.durum || 0]++; });
-    var fb = '<div class="filtre-bar">' +
-        '<button class="fbtn' + (_siparisFiltre === 0 ? ' aktif' : '') + '" onclick="fisFiltreSet(0)">Tümü (' + fisler.length + ')</button>' +
-        '<button class="fbtn' + (_siparisFiltre === 1 ? ' aktif' : '') + '" onclick="fisFiltreSet(1)">🔵 Bekleyen (' + (say[0] + say[1]) + ')</button>' +
-        '<button class="fbtn' + (_siparisFiltre === 2 ? ' aktif' : '') + '" onclick="fisFiltreSet(2)">🟢 Geldi (' + say[2] + ')</button>' +
-    '</div>';
+    _siparisFiltre = 0;   // Siparişler listesinde durum filtresi yok; gelenler alt sekmede takip ediliyor
     var html = '';
     var gY = 0, gU = 0, gCesit = 0, gAdet = 0, gKg = 0, gosterilen = 0;
     for (var i = fisler.length - 1; i >= 0; i--) {
@@ -965,7 +960,7 @@ function fislerRender() {
         if (vm) html += '<div class="fis-varis" style="color:' + vm.renk + '">' + vm.t + '</div>';
         html += '</div></div></div>';
     }
-    if (gosterilen === 0) { el.innerHTML = fb + '<div class="empty"><div class="ico">🔍</div><p>Bu filtrede sipariş yok.</p></div>'; return; }
+    if (gosterilen === 0) { el.innerHTML = '<div class="empty"><div class="ico">🔍</div><p>Sipariş yok.</p></div>'; return; }
     var bas = _siparisFiltre === 1 ? '💰 Bekleyenler' : (_siparisFiltre === 2 ? '💰 Gelenler' : '💰 Tüm Siparişler');
     html += '<div class="toplam5">' +
         '<div class="t5-info">📦 ' + gCesit + ' çeşit · ' + gAdet + ' adet · ' + kgStr(gKg) + ' kg</div>' +
@@ -973,7 +968,7 @@ function fislerRender() {
         '<div class="r2"><span class="l2">+ %5 dahil</span><span class="v2">¥' + f(gY * 1.05) + '<span class="usd" style="color:#fde68a">· $' + f(gU * 1.05) + '</span></span></div>' +
         nakliyeSatiri(gKg, getKurlar()) +
     '</div>';
-    el.innerHTML = fb + html;
+    el.innerHTML = html;
     swipeKur();
 }
 // Siparişler listesindeki görünüm sırası (en yeni üstte) = id dizisi
@@ -1514,7 +1509,7 @@ function baglantiTesti() {
     var u = (typeof firebase !== 'undefined' && firebase.auth) ? firebase.auth().currentUser : null;
     u = u || _user;
     var L = [];
-    L.push('Sürüm 24');
+    L.push('Sürüm 25');
     L.push('Giriş: ' + (u ? u.email : '❌ YOK'));
     L.push('uid: ' + (u ? u.uid.slice(0, 10) : '-'));
     L.push('firebase yüklü: ' + (typeof firebase !== 'undefined' ? 'evet' : '❌ HAYIR'));
