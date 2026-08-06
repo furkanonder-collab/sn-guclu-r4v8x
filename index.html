@@ -326,7 +326,7 @@ body {
         <div id="bulutDurum" style="font-size:12px;color:#94a3b8;text-align:center;margin-bottom:8px;line-height:1.4">—</div>
         <button class="btn-yedek" onclick="baglantiTesti()" style="width:100%">🔧 Bağlantı Testi</button>
         <button class="btn-yedek" onclick="authCikis()" style="width:100%;margin-top:8px">🚪 Çıkış Yap</button>
-        <div class="surum-not">Sürüm 27 · Bulut senkron</div>
+        <div class="surum-not">Sürüm 28 · Bulut senkron</div>
     </div>
 
     <div class="card">
@@ -1443,7 +1443,7 @@ function bulutYaz() {
     if (!_user || !_fbReady || _applyingRemote) return;
     _pendingPush = true;   // gönderim bitene kadar gelen bulutu yok say (saat farkından BAĞIMSIZ yarış önleme)
     clearTimeout(_pushTimer);
-    _pushTimer = setTimeout(_bulutGonder, 250);
+    _pushTimer = setTimeout(_bulutGonder, 150);
 }
 function _bulutGonder() {
     if (!_user || !_fbRef) { _pendingPush = false; return; }
@@ -1515,7 +1515,7 @@ function baglanCloud() {
             _applyingRemote = false;
             _ekranYenile();
             _bulutDurum('✅ Senkron: ' + (_user.email || ''), '#6ee7b7');
-        }, 80);
+        }, 50);
     };
     fref.on('child_added', function (s) { _cloudFis[s.key] = s.val(); rebuild(); });
     fref.on('child_changed', function (s) { _cloudFis[s.key] = s.val(); rebuild(); });
@@ -1538,7 +1538,7 @@ function baglantiTesti() {
     var u = (typeof firebase !== 'undefined' && firebase.auth) ? firebase.auth().currentUser : null;
     u = u || _user;
     var L = [];
-    L.push('Sürüm 27');
+    L.push('Sürüm 28');
     L.push('Giriş: ' + (u ? u.email : '❌ YOK'));
     L.push('uid: ' + (u ? u.uid.slice(0, 10) : '-'));
     L.push('firebase yüklü: ' + (typeof firebase !== 'undefined' ? 'evet' : '❌ HAYIR'));
